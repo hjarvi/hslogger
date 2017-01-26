@@ -186,6 +186,7 @@ logger hierarchy. -}
                                saveGlobalLogger,
                                updateGlobalLogger
                                ) where
+import Prelude hiding (null)
 import System.Log
 import System.Log.Handler(LogHandler, close)
 import System.Log.Formatter(LogFormatter) -- for Haddock
@@ -194,6 +195,8 @@ import System.Log.Handler.Simple
 import System.IO
 import System.IO.Unsafe
 import Control.Concurrent.MVar
+import Data.ByteString (append, null)
+import Data.ByteString.Char8 (pack)
 import Data.List(map, isPrefixOf)
 import Data.Maybe
 import qualified Data.Map as Map
@@ -222,6 +225,9 @@ all adhere to this class. -}
 -- on the system.
 rootLoggerName :: String
 rootLoggerName = ""
+
+showB :: (Show a) => a -> LogString
+showB = pack . show
 
 ---------------------------------------------------------------------------
 -- Logger Tree Storage
@@ -266,7 +272,7 @@ componentsOfName name' =
 
 logM :: String                           -- ^ Name of the logger to use
      -> Priority                         -- ^ Priority of this message
-     -> String                           -- ^ The log text itself
+     -> LogString                           -- ^ The log text itself
      -> IO ()
 
 logM logname pri msg = do
@@ -279,49 +285,49 @@ logM logname pri msg = do
 
 {- | Log a message at 'DEBUG' priority -}
 debugM :: String                         -- ^ Logger name
-      -> String                         -- ^ Log message
+      -> LogString                         -- ^ Log message
       -> IO ()
 debugM s = logM s DEBUG
 
 {- | Log a message at 'INFO' priority -}
 infoM :: String                         -- ^ Logger name
-      -> String                         -- ^ Log message
+      -> LogString                         -- ^ Log message
       -> IO ()
 infoM s = logM s INFO
 
 {- | Log a message at 'NOTICE' priority -}
 noticeM :: String                         -- ^ Logger name
-      -> String                         -- ^ Log message
+      -> LogString                         -- ^ Log message
       -> IO ()
 noticeM s = logM s NOTICE
 
 {- | Log a message at 'WARNING' priority -}
 warningM :: String                         -- ^ Logger name
-      -> String                         -- ^ Log message
+      -> LogString                         -- ^ Log message
       -> IO ()
 warningM s = logM s WARNING
 
 {- | Log a message at 'ERROR' priority -}
 errorM :: String                         -- ^ Logger name
-      -> String                         -- ^ Log message
+      -> LogString                         -- ^ Log message
       -> IO ()
 errorM s = logM s ERROR
 
 {- | Log a message at 'CRITICAL' priority -}
 criticalM :: String                         -- ^ Logger name
-      -> String                         -- ^ Log message
+      -> LogString                         -- ^ Log message
       -> IO ()
 criticalM s = logM s CRITICAL
 
 {- | Log a message at 'ALERT' priority -}
 alertM :: String                         -- ^ Logger name
-      -> String                         -- ^ Log message
+      -> LogString                         -- ^ Log message
       -> IO ()
 alertM s = logM s ALERT
 
 {- | Log a message at 'EMERGENCY' priority -}
 emergencyM :: String                         -- ^ Logger name
-      -> String                         -- ^ Log message
+      -> LogString                         -- ^ Log message
       -> IO ()
 emergencyM s = logM s EMERGENCY
 
@@ -357,7 +363,7 @@ getRootLogger :: IO Logger
 getRootLogger = getLogger rootLoggerName
 
 -- | Log a message, assuming the current logger's level permits it.
-logL :: Logger -> Priority -> String -> IO ()
+logL :: Logger -> Priority -> LogString -> IO ()
 logL l pri msg = handle l (pri, msg)
 
 -- | Handle a log request.
@@ -495,16 +501,16 @@ Takes a logger name, priority, leading description text (you can set it to
 
 traplogging :: String                   -- Logger name
             -> Priority                 -- Logging priority
-            -> String                   -- Descriptive text to prepend to logged messages
+            -> LogString                -- Descriptive text to prepend to logged messages
             -> IO a                     -- Action to run
             -> IO a                     -- Return value
 traplogging logger priority' desc action =
     let realdesc = case desc of
-                             "" -> ""
-                             x -> x ++ ": "
+                             x | null x -> pack ""
+                             x -> x `append` (pack ": ")
         handler :: Control.Exception.SomeException -> IO a
         handler e = do
-                    logM logger priority' (realdesc ++ (show e))
+                    logM logger priority' (realdesc `append` showB e)
                     Control.Exception.throw e             -- Re-raise it
         in
         Control.Exception.catch action handler

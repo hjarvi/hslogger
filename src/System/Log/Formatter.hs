@@ -15,7 +15,7 @@ Please see "System.Log.Logger" for extensive documentation on the
 logging system.
 
 -}
-
+{-# LANGUAGE ViewPatterns #-}
 
 module System.Log.Formatter( LogFormatter
                            , nullFormatter
@@ -23,7 +23,10 @@ module System.Log.Formatter( LogFormatter
                            , tfLogFormatter
                            , varFormatter
                            ) where
-import Data.List
+import Prelude hiding (uncons, isPrefixOf, drop, length)
+import Data.ByteString as BS
+import Data.ByteString.Char8 as BSC
+import Data.List hiding (uncons, length, isPrefixOf, drop)
 import Control.Applicative ((<$>))
 import Control.Concurrent (myThreadId)
 #ifndef mingw32_HOST_OS
@@ -45,7 +48,10 @@ import System.Log
 type LogFormatter a = a -- ^ The LogHandler that the passed message came from
                     -> LogRecord -- ^ The log message and priority
                     -> String -- ^ The logger name
-                    -> IO String -- ^ The formatted log message
+                    -> IO LogString -- ^ The formatted log message
+
+showB :: (Show a) => a -> BS.ByteString
+showB = BSC.pack . show
 
 -- | Returns the passed message as is, ie. no formatting is done.
 nullFormatter :: LogFormatter a
@@ -69,16 +75,16 @@ nullFormatter _ (_,msg) _ = return msg
 --    * @$time@ - The current time
 --
 --    * @$utcTime@ - The current time in UTC Time
-simpleLogFormatter :: String -> LogFormatter a
+simpleLogFormatter :: LogString -> LogFormatter a
 simpleLogFormatter format h (prio, msg) loggername =
     tfLogFormatter "%F %X %Z" format h (prio,msg) loggername
 
 -- | Like 'simpleLogFormatter' but allow the time format to be specified in the first
 -- parameter (this is passed to 'Date.Time.Format.formatTime')
-tfLogFormatter :: String -> String -> LogFormatter a
+tfLogFormatter :: String -> LogString -> LogFormatter a
 tfLogFormatter timeFormat format = do
-  varFormatter [("time", formatTime defaultTimeLocale timeFormat <$> getZonedTime)
-               ,("utcTime", formatTime defaultTimeLocale timeFormat <$> getCurrentTime)
+  varFormatter [(BSC.pack "time", BSC.pack <$> (formatTime defaultTimeLocale timeFormat <$> getZonedTime))
+               ,(BSC.pack "utcTime", BSC.pack <$> (formatTime defaultTimeLocale timeFormat <$> getCurrentTime))
                ]
       format
 
@@ -86,14 +92,14 @@ tfLogFormatter timeFormat format = do
 -- Each variable has an associated IO action that is used to produce the
 -- string to substitute for the variable name.  The predefined variables are the same
 -- as for 'simpleLogFormatter' /excluding/ @$time@ and @$utcTime@.
-varFormatter :: [(String, IO String)] -> String -> LogFormatter a
+varFormatter :: [(LogString, IO LogString)] -> LogString -> LogFormatter a
 varFormatter vars format _h (prio,msg) loggername = do
-    outmsg <- replaceVarM (vars++[("msg", return msg)
-                                 ,("prio", return $ show prio)
-                                 ,("loggername", return loggername)
-                                 ,("tid", show <$> myThreadId)
+    outmsg <- replaceVarM (vars++[(BSC.pack "msg", return msg)
+                                 ,(BSC.pack "prio", return $ showB prio)
+                                 ,(BSC.pack "loggername", return $ BSC.pack loggername)
+                                 ,(BSC.pack "tid", showB <$> myThreadId)
 #ifndef mingw32_HOST_OS
-                                 ,("pid", show <$> getProcessID)
+                                 ,(BSC.pack "pid", showB <$> getProcessID)
 #endif
                                  ]
                           )
@@ -102,16 +108,18 @@ varFormatter vars format _h (prio,msg) loggername = do
 
 
 -- | Replace some '$' variables in a string with supplied values
-replaceVarM :: [(String, IO String)] -- ^ A list of (variableName, action to get the replacement string) pairs
-           -> String   -- ^ String to perform substitution on
-           -> IO String   -- ^ Resulting string
-replaceVarM _ [] = return []
-replaceVarM keyVals (s:ss) | s=='$' = do (f,rest) <- replaceStart keyVals ss
-                                         repRest <- replaceVarM keyVals rest
-                                         return $ f ++ repRest
-                           | otherwise = replaceVarM keyVals ss >>= return . (s:)
+replaceVarM :: [(LogString, IO LogString)] -- ^ A list of (variableName, action to get the replacement string) pairs
+           -> LogString   -- ^ String to perform substitution on
+           -> IO LogString   -- ^ Resulting string
+replaceVarM _ (BSC.uncons -> Nothing) = return empty
+replaceVarM keyVals (BSC.uncons -> Just (s, ss)) | s=='$' =
+      do (f,rest) <- replaceStart keyVals ss
+         repRest <- replaceVarM keyVals rest
+         return $ f `append` repRest
+                                       | otherwise = replaceVarM keyVals ss >>= return . (append (BSC.pack [s]))
     where
-      replaceStart [] str = return ("$",str)
+      replaceStart :: [(LogString, IO LogString)] -> LogString -> IO (LogString,LogString)
+      replaceStart [] str = return (BSC.pack "$",str)
       replaceStart ((k,v):kvs) str | k `isPrefixOf` str = do vs <- v
                                                              return (vs, drop (length k) str)
                                    | otherwise = replaceStart kvs str

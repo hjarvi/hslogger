@@ -11,8 +11,7 @@ Written by John Goerzen, jgoerzen\@complete.org
 -}
 
 module System.Log.Handler.Simple(streamHandler, fileHandler,
-                                      GenericHandler (..),
-                                      verboseStreamHandler)
+                                      GenericHandler (..))
     where
 
 import Control.Exception (tryJust)
@@ -22,16 +21,25 @@ import Data.Char (ord)
 import System.Log
 import System.Log.Handler
 import System.Log.Formatter
-import System.IO
+import System.IO (Handle, openFile, hClose, hFlush, IOMode(..))
 import System.IO.Error
 import Control.Concurrent.MVar
+
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BSC
+import Data.ByteString.Char8 (hPutStrLn)
+import Data.ByteString.Builder
+import qualified Data.ByteString.Lazy as LB
+
+toByteString = LB.toStrict . toLazyByteString
+showB = byteString . BSC.pack . show
 
 {- | A helper data type. -}
 
 data GenericHandler a = GenericHandler {priority :: Priority,
                                         formatter :: LogFormatter (GenericHandler a),
                                         privData :: a,
-                                        writeFunc :: a -> String -> IO (),
+                                        writeFunc :: a -> LogString -> IO (),
                                         closeFunc :: a -> IO () }
 
 instance LogHandler (GenericHandler a) where
@@ -69,12 +77,14 @@ streamHandler h pri =
           | isDoesNotExistError e = Just e
           | otherwise = Nothing
       handleWriteException hdl msg e =
-          let msg' = "Error writing log message: " ++ show e ++
-                     " (original message: " ++ msg ++ ")"
-          in hPutStrLn hdl (encodingSave msg')
-      encodingSave = concatMap (\c -> if ord c > 127
-                                         then "\\" ++ show (ord c)
-                                         else [c])
+          let msg' = toByteString
+                     $ mconcat [ byteString $ BSC.pack "Error writing log message: "
+                               , showB e
+                               , byteString $ BSC.pack " (original message: "
+                               , byteString msg
+                               , byteString $ BSC.pack ")"
+                               ]
+          in hPutStrLn hdl msg'
 
 {- | Create a file log handler.  Log messages sent to this handler
    will be sent to the filename specified, which will be opened
@@ -87,9 +97,3 @@ fileHandler fp pri = do
                      sh <- streamHandler h pri
                      return (sh{closeFunc = hClose})
 
-{- | Like 'streamHandler', but note the priority and logger name along
-with each message. -}
-verboseStreamHandler :: Handle -> Priority -> IO (GenericHandler Handle)
-verboseStreamHandler h pri = let fmt = simpleLogFormatter "[$loggername/$prio] $msg"
-                             in do hndlr <- streamHandler h pri
-                                   return $ setFormatter hndlr fmt

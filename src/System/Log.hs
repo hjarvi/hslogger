@@ -27,7 +27,8 @@ Extensive documentation is available in
 
 module System.Log(-- * Types
                         Priority(..),
-                        LogRecord
+                        LogRecord,
+                        LogString
 )
 
     where
@@ -37,6 +38,9 @@ import Data.Data (Data, Typeable)
 #if __GLASGOW_HASKELL__ >= 702
 import  GHC.Generics (Generic)
 #endif
+import qualified Data.ByteString as BS
+
+type LogString = BS.ByteString
 
 {- | Priorities are used to define how important a log message is.
 Users can filter log messages based on priorities.
@@ -66,4 +70,4 @@ instance NFData Priority where rnf = (`seq` ())
 
 {- | Internal type of log records -}
 
-type LogRecord = (Priority, String)
+type LogRecord = (Priority, LogString)
