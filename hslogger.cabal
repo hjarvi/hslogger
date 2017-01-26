@@ -1,5 +1,5 @@
-Name: hslogger
-Version: 1.2.10
+Name: hslogger-bytestring
+Version: 1.2.10.1
 License: BSD3
 Maintainer: John Goerzen <jgoerzen@complete.org>
 Author: John Goerzen
@@ -40,9 +40,11 @@ flag buildtests
 
 Library
     Exposed-Modules:
-      System.Log, System.Log.Handler, System.Log.Formatter,
-        System.Log.Handler.Simple, System.Log.Handler.Syslog,
-        System.Log.Handler.Growl, System.Log.Handler.Log4jXML,
+        System.Log, System.Log.Handler, System.Log.Formatter,
+        System.Log.Handler.Simple,
+        -- NOTE: Syslog, Growl, Log4jXML not converted to bytestring, so disabling them.
+        -- System.Log.Handler.Syslog,
+        -- System.Log.Handler.Growl, System.Log.Handler.Log4jXML,
         System.Log.Logger
     Extensions: CPP, ExistentialQuantification
     Build-Depends: network, mtl
@@ -50,7 +52,7 @@ Library
         Build-Depends: unix
     if flag(small_base)
         build-depends: base >= 4 && < 5, containers, directory, process,
-                       time, old-locale
+                       time, old-locale, bytestring
     else
         build-depends: base < 3, time
     -- GHC-Options: -O2

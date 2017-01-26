@@ -22,10 +22,15 @@ Extensive documentation is available in
 
 module System.Log(-- * Types
                         Priority(..),
-                        LogRecord
+                        LogRecord,
+                        LogString
 )
 
     where
+
+import qualified Data.ByteString as BS
+
+type LogString = BS.ByteString
 
 {- | Priorities are used to define how important a log message is.
 Users can filter log messages based on priorities.
@@ -48,5 +53,5 @@ data Priority =
 
 {- | Internal type of log records -}
 
-type LogRecord = (Priority, String)
+type LogRecord = (Priority, BS.ByteString)
 
